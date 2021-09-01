@@ -1,0 +1,18 @@
+{
+  "name": "epic-manifest-parser",
+  "version": "2.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "compile": "tsc",
+    "test": "tsc && node test/index.js"
+  },
+  "keywords": [],
+  "author": "command",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^16.4.10",
+    "typescript": "^4.3.5"
+  }
+}

@@ -1,81 +1,85 @@
+import { EChunkLoadResult } from "../enums/EChunkLoadResult";
+
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { ManifestOptions } from "./ManifestOptions";
 import { request } from "../misc/HTTPSUtils";
 import { FChunkHeader } from "./ChunkData";
 import { FileManifest } from "./Manifest";
+import FileChunk from "./FileChunk";
 import { Readable } from "stream";
 import FArchive from "./FArchive";
-import FString from "./FString";
 import { join } from "path";
+import crypto from "crypto";
 
 export class FileManifestStream extends Readable {
-  _options: ManifestOptions
-  _file: FileManifest
-
-  _chunks: any[]
-
-  _length: number = 0
   _index: number = 0
+  _chunks: FileChunk[]
 
   constructor(file) {
     super()
 
-    this._file = file
-    this._length = file.Size
-    this._options = file._manifest._manifestOptions
+    Object.defineProperty(this, "_file", { value: file, enumerable: false });
+
+    let manifest = Object.getOwnPropertyDescriptor(file, "_manifest").value
+    let options = Object.getOwnPropertyDescriptor(manifest, "_options").value
+    Object.defineProperty(this, "_options", { value: options, enumerable: false });
 
     let chunks = file.ChunkParts
     this._chunks = [...new Array(chunks.length)]
     for (var idx in chunks) {
       let i = Number(idx)
       let chunk = chunks[i]
+      this._chunks[i] = manifest.Chunks.get(chunk.Guid)
 
       let prevChunk = i === 0 ? null : this._chunks[i - 1]
-
-      let group = file._manifest.DataGroupList[chunk.Guid].slice(-2)
-      let hash = file._manifest.ChunkHashList[chunk.Guid]
-
-      this._chunks[i] = {
-        offset: chunk.Offset,
-        guid: chunk.Guid,
-        size: chunk.Size,
-
-        start: i === 0 ? 0 : prevChunk.start + prevChunk.size,
-
-        group,
-        hash,
-
-        url: `${group}/`,
-        fileName: `${hash}_${chunk.Guid}.chunk`
-      }
-      this._chunks[i].url += this._chunks[i].fileName
+      this._chunks[i].Size = chunk.Size
+      this._chunks[i].Start = prevChunk ? prevChunk.Start + prevChunk.Size : 0
+      this._chunks[i].Offset = chunk.Offset
     }
   }
 
-  async _read(size) {
+  async _read() {
     if (this._index >= this._chunks.length) return this.push(null)
 
     let chunk = this._chunks[this._index]
+    let file = Object.getOwnPropertyDescriptor(this, "_file").value
 
-    let _path = join(this._options.cacheDirectory || "", chunk.fileName)
-    let data = Buffer.alloc(chunk.offset + chunk.size)
+    let options = Object.getOwnPropertyDescriptor(this, "_options").value
+    let useCache = options.cacheDirectory && existsSync(options.cacheDirectory)
+    let path = useCache ? join(options.cacheDirectory, chunk.Filename) : null
 
-    if (this._options.cacheDirectory && existsSync(_path)) {
-      data = readFileSync(_path)
+    let result = Buffer.alloc(chunk.Size)
+    let resultSize = 0
+
+    let buf = Buffer.alloc(0)
+
+    if (useCache && existsSync(path)) {
+      buf = readFileSync(path)
+      resultSize = buf.copy(result, 0, chunk.Offset, chunk.Offset + chunk.Size)
     }
     else {
-      let res = await request({ uri: this._options.chunkBaseUri + (this._options.chunkBaseUri.endsWith("/") ? "" : "/") + chunk.url })
+      let res = await request({ uri: options.chunkBaseUri + (options.chunkBaseUri.endsWith("/") ? "" : "/") + chunk.Url })
       if (res.status === 200) {
         let ar = new FArchive(res.content)
         let header = new FChunkHeader(ar)
 
-        data = header.load(chunk)
-
-        writeFileSync(_path, data)
+        let loadResult = EChunkLoadResult.None;
+        [ loadResult, buf ] = header.load()
+        if (loadResult === EChunkLoadResult.Success) {
+          resultSize = buf.copy(result, 0, chunk.Offset, chunk.Offset + chunk.Size)
+          if (useCache && !existsSync(path)) writeFileSync(path, buf)
+        }
+        else throw new Error(`Failed to load chunk header at index ${this._index} for '${file.Name}', result '${EChunkLoadResult[loadResult]}'`)
       }
+      else throw new Error(`Failed to request chunk header at index ${this._index} for '${file.Name}', status '${res.status}'`)
     }
 
-    this.push(data.slice(chunk.offset, chunk.offset + chunk.size))
+    if (!resultSize || resultSize !== chunk.Size) throw new Error(`Failed to load chunk at index ${this._index} for '${file.Name}'`)
+
+    let hash = crypto.createHash("sha1").update(buf).digest("hex").toUpperCase()
+    if (hash !== chunk.Sha) throw new Error(`Chunk hash missmatch at index ${this._index} for '${file.Name}'`)
+
     this._index++
+    this.push(result)
   }
 }

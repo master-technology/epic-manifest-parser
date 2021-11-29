@@ -12,12 +12,8 @@ export default class FGuid {
   constructor()
 
   constructor(...params) {
-    if (!params.length) {
-      this.A = 0
-      this.B = 0
-      this.C = 0
-      this.D = 0
-    } else if (params.length === 4) {
+    if (!params.length) this.A = this.B = this.C = this.D = 0
+    else if (params.length === 4) {
       this.A = params[0]
       this.B = params[1]
       this.C = params[2]
@@ -30,11 +26,11 @@ export default class FGuid {
         this.C = x.readUInt32()
         this.D = x.readUInt32()
       } else {
-        const ar = Buffer.from(x)
-        this.A = ar.readIntLE(0, 1)
-        this.B = ar.readIntLE(1, 1)
-        this.C = ar.readIntLE(2, 1)
-        this.D = ar.readIntLE(3, 1)
+        const ar = Buffer.from(x, "hex")
+        this.A = ar.readUInt32LE(0)
+        this.B = ar.readUInt32LE(4)
+        this.C = ar.readUInt32LE(8)
+        this.D = ar.readUInt32LE(12)
       }
     }
   }
@@ -50,6 +46,10 @@ export default class FGuid {
 
   static NewGuid(): FGuid {
     return new FGuid()
+  }
+
+  isValid() {
+    return (this.A | this.B | this.C | this.D) !== 0
   }
 
   toString() {

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "fs";
+import fs from "fs";
 
 export class ManifestOptions {
   chunkBaseUri: string
@@ -8,6 +8,6 @@ export class ManifestOptions {
     this.chunkBaseUri = data.chunkBaseUri
     this.cacheDirectory = data.cacheDirectory
 
-    if (this.cacheDirectory && !existsSync(this.cacheDirectory)) mkdirSync(this.cacheDirectory, { recursive: true })
+    if (this.cacheDirectory && !fs.existsSync(this.cacheDirectory)) fs.mkdirSync(this.cacheDirectory, { recursive: true })
   }
 }

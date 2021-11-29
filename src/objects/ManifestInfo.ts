@@ -1,8 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { ManifestOptions } from "./ManifestOptions";
 import { request } from "../misc/HTTPSUtils";
-import { createHash } from "crypto";
+import crypto from "crypto";
 import { join } from "path";
+import fs from "fs";
 
 export class ManifestInfo {
   buildVersion: string
@@ -12,15 +11,11 @@ export class ManifestInfo {
   hash: string
   urls: string[]
 
-  private _options: ManifestOptions
+  constructor(data: string)
+  constructor(obj: object)
+  constructor(buf: Buffer)
 
-  constructor(data: string, options?: ManifestOptions)
-  constructor(data: object, options?: ManifestOptions)
-  constructor(buf: Buffer, options?: ManifestOptions)
-
-  constructor(data, options: ManifestOptions = new ManifestOptions()) {
-    this._options = options
-
+  constructor(data) {
     if (data.constructor.name !== "Object") data = JSON.parse(data)
 
     if ("elements" in data) {
@@ -61,9 +56,9 @@ export class ManifestInfo {
     this.filename = new URL(this.urls[0]).pathname.split("/").pop()
   }
 
-  async downloadManifestData() {
-    let _file = this._options.cacheDirectory ? join(this._options.cacheDirectory, this.filename) : null
-    if (_file && existsSync(_file)) return readFileSync(_file)
+  async downloadManifestData(dir = null) {
+    let path = dir ? join(dir, this.filename) : null
+    if (path && fs.existsSync(path)) return fs.readFileSync(path)
 
     let data, urls = this.urls;
     while (!data && urls.length) {
@@ -77,12 +72,12 @@ export class ManifestInfo {
       }
     }
 
-    if (!data) throw new Error("Failed to grab manifest data")
+    if (!data) throw new Error("Failed to fetch manifest")
 
-    let hash = createHash("sha1").update(data).digest("hex")
-    if (hash !== this.hash) throw new Error("Manifest hash missmatch")
+    let hash = crypto.createHash("sha1").update(data).digest("hex")
+    if (hash !== this.hash) throw new Error("Manifest is corrupted")
 
-    if (_file) writeFileSync(_file, data)
+    if (path) fs.writeFileSync(path, data)
     return data
   }
 }

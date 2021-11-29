@@ -21,7 +21,7 @@ import {
 
 export class FManifestHeader {
   /* The manifest header magic codeword, for quick checking that the opened file is probably a manifest file. */
-  static readonly MANIFEST_HEADER_MAGIC: number =  0x44BEC00C
+  static readonly MANIFEST_HEADER_MAGIC: number = 0x44BEC00C
 
 
   /* The version of this header and manifest data format, driven by the feature level. */

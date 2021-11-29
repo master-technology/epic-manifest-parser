@@ -2,6 +2,7 @@
 
 import { ChunkHeaderVersionSizes } from "../enums/ChunkHeaderVersionSizes";
 import { EChunkStorageFlags } from "../enums/EChunkStorageFlags";
+import { EChunkLoadResult } from "../enums/EChunkLoadResult";
 import { EChunkHashFlags } from "../enums/EChunkHashFlags";
 import { EChunkVersion } from "../enums/EChunkVersion";
 
@@ -10,6 +11,7 @@ import { inflateSync } from "zlib";
 import FArchive from "./FArchive";
 import FSHAHash from "./FSHAHash";
 import FGuid from "./FGuid";
+import crypto from "crypto";
 
 export class FChunkInfo {
   /* The GUID for this data. */
@@ -51,7 +53,7 @@ export class FChunkPart {
 
 export class FChunkHeader {
   /* The chunk header magic codeword, for quick checking that the opened file is a chunk file. */
-  readonly CHUNK_HEADER_MAGIC: number =  0xB1FE3AA2
+  readonly CHUNK_HEADER_MAGIC: number = 0xB1FE3AA2
 
 
   /* The version of this header data. */
@@ -102,7 +104,7 @@ export class FChunkHeader {
         bSuccess = sizeLeft >= ChunkHeaderVersionSizes[EChunkVersion.StoresShaAndHashType]
         if (bSuccess) {
           this.SHAHash = new FSHAHash(ar)
-          this.HashType = ar.readEnum(EChunkHashFlags)
+          this.HashType = ar.readUInt8()
         }
         expectedBytes = ChunkHeaderVersionSizes[EChunkVersion.StoresShaAndHashType]
       }
@@ -138,16 +140,37 @@ export class FChunkHeader {
     }
   }
 
-  load(chunk: FileChunkPart): Buffer {
-    this._ar.seek(this.HeaderSize)
+  load(): [ EChunkLoadResult, Buffer ] {
+    if (!this.Guid.isValid()) return [ EChunkLoadResult.CorruptHeader, null ]
+    if (this.HashType === EChunkHashFlags.None) return [ EChunkLoadResult.MissingHashInfo, null ]
+    let ar = this._ar
 
-    let buf = this._ar.read(this.DataSizeCompressed)
+    /* Begin of read pos. */
+    let startPos = ar.tell()
+    /* Available read size. */
+    let sizeLeft = ar.size - startPos
 
+    if (this.DataSizeCompressed > sizeLeft) return [ EChunkLoadResult.IncorrectFileSize, null ]
+    if (this.StoredAs & EChunkStorageFlags.Encrypted) return [ EChunkLoadResult.UnsupportedStorage, null ]
+
+    /* Read the data. */
+    let buf = ar.read(this.DataSizeCompressed)
+
+    /* Decompress. */
     if (this.StoredAs & EChunkStorageFlags.Compressed) {
       let data = inflateSync(buf)
-      buf = data
+      buf = Buffer.alloc(this.DataSizeUncompressed)
+      data.copy(buf)
     }
 
-    return buf
+    /* Verify. */
+    if (this.HashType & EChunkHashFlags.RollingPoly64) { /* console.log("EChunkHashFlags::RollingPoly64"); */ } // TODO
+
+    if (this.HashType & EChunkHashFlags.Sha1) {
+      let hash = crypto.createHash("sha1").update(buf).digest("hex")
+      if (hash !== this.SHAHash.toString("hex")) return [ EChunkLoadResult.HashCheckFailed, null ]
+    }
+
+    return [ EChunkLoadResult.Success, buf ]
   }
 }

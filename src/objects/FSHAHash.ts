@@ -13,12 +13,8 @@ export default class FSHAHash {
     else if (data instanceof Array) this.Hash = Buffer.from(data)
   }
 
-  ToHexString() {
-    return this.Hash.toString("hex").toUpperCase()
-  }
-
-  toString() {
-    return this.Hash.toString("base64")
+  toString(encoding: BufferEncoding = "base64") {
+    return this.Hash.toString(encoding)
   }
 
   toJSON() {

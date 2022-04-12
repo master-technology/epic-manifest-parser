@@ -1,5 +1,5 @@
 export var ChunkHeaderVersionSizes: number[] = [
-  // Dummy for indexing.
+	// Dummy for indexing.
 	0,
 	// Original is 41 bytes (32b Magic, 32b Version, 32b HeaderSize, 32b DataSizeCompressed, 4x32b GUID, 64b Hash, 8b StoredAs).
 	41,

@@ -17,7 +17,7 @@ const fs = require('fs');
 
   let options = new ManifestOptions({ cacheDirectory: path.join(process.env.USERPROFILE, 'Documents', 'FortniteChunks') })
   let manifestInfo = new ManifestInfo(res.data)
-  console.log(`Grabbing manifest for ${manifestInfo.appName} (${manifestInfo.buildVersion})`);
+  console.log(`Grabbing manifest for ${manifestInfo.AppName} (${manifestInfo.BuildVersion})`);
 
   let manifestData = await manifestInfo.downloadManifestData(options.cacheDirectory)
   let manifest = new Manifest(manifestData, options)
@@ -25,7 +25,7 @@ const fs = require('fs');
 
   options.chunkBaseUri = 'http://epicgames-download1.akamaized.net/Builds/Fortnite/CloudDir/' + manifest.getChunkSubdir() + '/'
 
-  let files = manifest.FileManifestList.filter(f => f.InstallTags.includes('chunk0'))
+  let files = manifest.FileManifestList.filter(f => f.Tags.includes('chunk0'))
   let start = Date.now()
 
   await Promise.all(files.map(async file => new Promise(resolve => {

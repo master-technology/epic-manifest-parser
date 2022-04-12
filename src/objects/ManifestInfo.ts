@@ -4,12 +4,12 @@ import { join } from "path";
 import fs from "fs";
 
 export class ManifestInfo {
-  buildVersion: string
-  labelName: string
-  filename: string
-  appName: string
-  hash: string
-  urls: string[]
+  BuildVersion: string
+  LabelName: string
+  Filename: string
+  AppName: string
+  Urls: string[]
+  Hash: string
 
   constructor(data: string)
   constructor(obj: object)
@@ -21,12 +21,12 @@ export class ManifestInfo {
     if ("elements" in data) {
       data = data.elements[0]
 
-      this.appName = data.appName
-      this.labelName = data.labelName
-      this.buildVersion = data.buildVersion
-      this.hash = data.hash
+      this.AppName = data.appName
+      this.LabelName = data.labelName
+      this.BuildVersion = data.buildVersion
+      this.Hash = data.hash
 
-      this.urls = data.manifests.reduce((acc, c) => {
+      this.Urls = data.manifests.reduce((acc, c) => {
         let url = c.uri;
 
         let querys = []
@@ -44,40 +44,40 @@ export class ManifestInfo {
       }, [])
     }
     else {
-      this.appName = data.appName
-      this.labelName = data.labelName
-      this.buildVersion = data.buildVersion
+      this.AppName = data.appName
+      this.LabelName = data.labelName
+      this.BuildVersion = data.buildVersion
 
       let m = data.items.MANIFEST;
-      this.hash = m.hash
-      this.urls = [m.distribution + m.path + "?" + m.signature]
+      this.Hash = m.hash
+      this.Urls = [m.distribution + m.path + "?" + m.signature]
     }
 
-    this.filename = new URL(this.urls[0]).pathname.split("/").pop()
+    this.Filename = new URL(this.Urls[0]).pathname.split("/").pop()
   }
 
-  async downloadManifestData(dir = null) {
-    let path = dir ? join(dir, this.filename) : null
-    if (path && fs.existsSync(path)) return fs.readFileSync(path)
+  async downloadManifestData(dir = null): Promise<Buffer> {
+    let path = dir ? join(dir, this.Filename) : null;
+    if (path && fs.existsSync(path)) return fs.readFileSync(path);
 
-    let data, urls = this.urls;
-    while (!data && urls.length) {
-      let uri = urls.shift()
+    let data = Buffer.alloc(0);
+    for (let i = 0; i < this.Urls.length; i++) {
+      let uri = this.Urls[i];
 
-      let res = await request({ uri })
+      let res = await request({ uri });
       if (res.status === 200) {
-        data = Buffer.alloc(res.content.length)
-        res.content.copy(data, 0, 0, res.content.length)
-        break
+        data = Buffer.alloc(res.content.length);
+        res.content.copy(data, 0, 0, res.content.length);
+        break;
       }
     }
 
-    if (!data) throw new Error("Failed to fetch manifest")
+    if (!data) throw new Error("Failed to fetch manifest");
 
-    let hash = crypto.createHash("sha1").update(data).digest("hex")
-    if (hash !== this.hash) throw new Error("Manifest is corrupted")
+    let hash = crypto.createHash("sha1").update(data).digest("hex");
+    if (hash !== this.Hash) throw new Error("Manifest is corrupted");
 
-    if (path) fs.writeFileSync(path, data)
-    return data
+    if (path) fs.writeFileSync(path, data);
+    return data;
   }
 }

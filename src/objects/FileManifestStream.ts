@@ -1,85 +1,80 @@
-import { EChunkLoadResult } from "../enums/EChunkLoadResult";
+import { FileChunkPart } from "./FileChunkPart";
+import { FileManifest } from "./FileManifest";
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { ManifestOptions } from "./ManifestOptions";
-import { request } from "../misc/HTTPSUtils";
-import { FChunkHeader } from "./ChunkData";
-import { FileManifest } from "./Manifest";
-import FileChunk from "./FileChunk";
 import { Readable } from "stream";
-import FArchive from "./FArchive";
-import { join } from "path";
-import crypto from "crypto";
 
 export class FileManifestStream extends Readable {
-  _index: number = 0
-  _chunks: FileChunk[]
+  length: number = 0
+  position: number = 0
 
-  constructor(file) {
+  private _chunks: FileChunkPart[]
+  private _startPositions: number[]
+
+  constructor(file: FileManifest) {
     super()
 
-    Object.defineProperty(this, "_file", { value: file, enumerable: false });
+    this._chunks = file.Chunks;
+    this._startPositions = [ ...Array(this._chunks.length).fill(0) ];
 
-    let manifest = Object.getOwnPropertyDescriptor(file, "_manifest").value
-    let options = Object.getOwnPropertyDescriptor(manifest, "_options").value
-    Object.defineProperty(this, "_options", { value: options, enumerable: false });
+    for (let i = 0; i < this._chunks.length; i++) {
+      let chunk = this._chunks[i];
 
-    let chunks = file.ChunkParts
-    this._chunks = [...new Array(chunks.length)]
-    for (var idx in chunks) {
-      let i = Number(idx)
-      let chunk = chunks[i]
-      this._chunks[i] = manifest.Chunks.get(chunk.Guid)
-
-      let prevChunk = i === 0 ? null : this._chunks[i - 1]
-      this._chunks[i].Size = chunk.Size
-      this._chunks[i].Start = prevChunk ? prevChunk.Start + prevChunk.Size : 0
-      this._chunks[i].Offset = chunk.Offset
+      this._startPositions[i] = this.length;
+      this.length += chunk.Size;
     }
   }
 
-  async _read() {
-    if (this._index >= this._chunks.length) return this.push(null)
-
-    let chunk = this._chunks[this._index]
-    let file = Object.getOwnPropertyDescriptor(this, "_file").value
-
-    let options = Object.getOwnPropertyDescriptor(this, "_options").value
-    let useCache = options.cacheDirectory && existsSync(options.cacheDirectory)
-    let path = useCache ? join(options.cacheDirectory, chunk.Filename) : null
-
-    let result = Buffer.alloc(chunk.Size)
-    let resultSize = 0
-
-    let buf = Buffer.alloc(0)
-
-    if (useCache && existsSync(path)) {
-      buf = readFileSync(path)
-      resultSize = buf.copy(result, 0, chunk.Offset, chunk.Offset + chunk.Size)
+  async _read(count: number) {
+    if (count == 0 || this.position >= this.length) {
+      this.push(null)
+      return 0
     }
-    else {
-      let res = await request({ uri: options.chunkBaseUri + (options.chunkBaseUri.endsWith("/") ? "" : "/") + chunk.Url })
-      if (res.status === 200) {
-        let ar = new FArchive(res.content)
-        let header = new FChunkHeader(ar)
 
-        let loadResult = EChunkLoadResult.None;
-        [ loadResult, buf ] = header.load()
-        if (loadResult === EChunkLoadResult.Success) {
-          resultSize = buf.copy(result, 0, chunk.Offset, chunk.Offset + chunk.Size)
-          if (useCache && !existsSync(path)) writeFileSync(path, buf)
-        }
-        else throw new Error(`Failed to load chunk header at index ${this._index} for '${file.Name}', result '${EChunkLoadResult[loadResult]}'`)
+    let bytesRead = 0
+    let chunks = []
+    while (true) {
+      let index = this.getChunkIndex();
+      if (index == -1) break;
+
+      let chunk = this._chunks[index];
+      let data = await chunk.loadData();
+      let off = this.position - this._startPositions[index];
+
+      let dataSize = chunk.Size - off;
+      if (dataSize > count) {
+        let buf = Buffer.alloc(count)
+        data.copy(buf, 0, off, off + count)
+        chunks.push(buf)
+
+        bytesRead += count;
+        this.position += count;
+        break;
       }
-      else throw new Error(`Failed to request chunk header at index ${this._index} for '${file.Name}', status '${res.status}'`)
+      else {
+        let buf = Buffer.alloc(dataSize)
+        data.copy(buf, 0, off, off + dataSize)
+        chunks.push(buf)
+
+        bytesRead += dataSize;
+        count -= dataSize;
+        this.position += dataSize;
+      }
+
+      if (count <= 0) break;
     }
 
-    if (!resultSize || resultSize !== chunk.Size) throw new Error(`Failed to load chunk at index ${this._index} for '${file.Name}'`)
+    this.push(Buffer.concat(chunks))
+    return bytesRead
+  }
 
-    let hash = crypto.createHash("sha1").update(buf).digest("hex").toUpperCase()
-    if (hash !== chunk.Sha) throw new Error(`Chunk hash missmatch at index ${this._index} for '${file.Name}'`)
+  private getChunkIndex() {
+    let pos = this.position;
+    for (let i = 0; i < this._chunks.length; i++) {
+      let chunk = this._chunks[i];
+      if (pos < chunk.Size) return i;
+      pos -= chunk.Size;
+    }
 
-    this._index++
-    this.push(result)
+    return -1;
   }
 }

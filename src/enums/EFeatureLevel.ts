@@ -1,5 +1,5 @@
 export enum EFeatureLevel {
-  /* The original version. */
+	/* The original version. */
 	Original = 0,
 	/* Support for custom fields. */
 	CustomFields,

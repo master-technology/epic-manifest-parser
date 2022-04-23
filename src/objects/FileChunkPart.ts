@@ -58,9 +58,8 @@ export class FileChunkPart {
       // }
 
       let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
-      if (sha != this.Sha)
-      {
-          throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch`);
+      if (sha != this.Sha) {
+        throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch`);
       }
     } else {
       if (this._options.chunkBaseUri == null) {
@@ -76,13 +75,15 @@ export class FileChunkPart {
       if (ar.readUInt32() != FChunkHeader.MAGIC) {
         throw new Error(`Chunk '${this.Filename}' is invalid: Header magic mismatch`);
       }
+      ar.seek(0)
 
       let header = new FChunkHeader(ar)
-      let [ status, data ] = header.load(ar)
+      let [ status, buf ] = header.load(ar)
       if (status != EChunkLoadResult.Success) {
-        throw new Error(`Chunk '${this.Filename}' is invalid: Load result error '${status}'`);
+        throw new Error(`Chunk '${this.Filename}' is invalid: Load result error '${EChunkLoadResult[status]}'`);
       }
 
+      data = buf
       if (path != null) fs.writeFileSync(path, data)
     }
 

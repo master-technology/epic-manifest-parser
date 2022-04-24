@@ -8,10 +8,12 @@ import { FCustomFields } from "./data/FCustomFields";
 import { FManifestMeta } from "./data/FManifestMeta";
 
 import { FArchive } from "./misc/FArchive";
+import { toHex } from "./misc/HexUtils";
 
 import { ManifestOptions } from "./ManifestOptions";
 import { FileManifest } from "./FileManifest";
 
+import crypto from "crypto";
 import path from "path";
 import zlib from "zlib";
 import fs from "fs";
@@ -46,25 +48,35 @@ export class Manifest {
       if (magic === FManifestHeader.MANIFEST_HEADER_MAGIC) {
         let ar = new FArchive(data)
 
-        let header = new FManifestHeader(ar)
+        let header = new FManifestHeader(ar, options.lazy)
 
-        if ((header.StoredAs & EManifestStorageFlags.Compressed) == EManifestStorageFlags.Compressed) {
-          let buf = ar.read(header.DataSizeCompressed)
-          let decompressed = zlib.inflateSync(buf)
-
-          if (decompressed.length != header.DataSizeUncompressed) {
-            throw new Error("Manifest is invalid: Data size mismatch");
-          }
-
-          ar = new FArchive(decompressed)
-        }
-        else if ((header.StoredAs & EManifestStorageFlags.Encrypted) == EManifestStorageFlags.Encrypted) {
+        let bytes
+        if ((header.StoredAs & EManifestStorageFlags.Encrypted) == EManifestStorageFlags.Encrypted) {
           throw new Error("Manifest is invalid: Data is encrypted");
         }
+        else if ((header.StoredAs & EManifestStorageFlags.Compressed) == EManifestStorageFlags.Compressed) {
+          let buf = ar.read(header.DataSizeCompressed)
+          let decompressed = zlib.inflateSync(buf)
+          bytes = decompressed
+        }
+        else if ((header.StoredAs & EManifestStorageFlags.Compressed) == EManifestStorageFlags.Compressed) {
+          let buf = ar.read(header.DataSizeCompressed)
+          bytes = buf
+        }
 
-        let meta = new FManifestMeta(ar)
-        let chunkData = new FChunkDataList(ar)
-        let fileData = new FFileManifestList(ar)
+        if (bytes.length != header.DataSizeUncompressed) {
+          throw new Error(`Manifest is invalid: Data size mismatch (${bytes.length} != ${header.DataSizeUncompressed})`);
+        }
+
+        if (!options.lazy) {
+          let hash = crypto.createHash("sha1").update(bytes).digest("hex").toUpperCase();
+          if (hash !== header.SHAHash.toString()) throw new Error(`Manifest is corrupted (${hash} != ${header.SHAHash.toString()})`);
+        }
+
+        ar = new FArchive(bytes)
+        let meta = new FManifestMeta(ar, options.lazy)
+        let chunkData = new FChunkDataList(ar, options.lazy)
+        let fileData = new FFileManifestList(ar, options.lazy)
         let customFields = new FCustomFields(ar)
 
         this.ManifestFileVersion                                       = meta.FeatureLevel
@@ -84,7 +96,7 @@ export class Manifest {
           return acc
         }, {})
         this.ChunkShaList                                              = chunkData.ChunkList.reduce((acc, chunk) => {
-          acc[chunk.Guid.toString()] = chunk.ShaHash.Hash
+          acc[chunk.Guid.toString()] = chunk.ShaHash?.Hash || null
           return acc
         }, {})
         this.DataGroupList                                             = chunkData.ChunkList.reduce((acc, chunk) => {
@@ -99,7 +111,7 @@ export class Manifest {
 
         this.FileManifestList = fileData.FileList.map(file => new FileManifest(file, this))
       } else {
-        throw new Error("Manifest is invalid: Header magic mismatch");
+        throw new Error(`Manifest is invalid: Header magic mismatch (0x${toHex(magic)} != 0x${toHex(FManifestHeader.MANIFEST_HEADER_MAGIC)})`);
       }
     } else {
       throw new Error("Manifest constructor requires a buffer");
@@ -111,7 +123,7 @@ export class Manifest {
     if (!dir || !fs.existsSync(dir)) return [ -1, -1 ]
 
     let guids = Object.keys(this.ChunkHashList)
-    let chunks = guids.map(guid => `${this.ChunkHashList[guid].toString(16).padStart(16, "0").toUpperCase()}_${guid}.chunk`)
+    let chunks = guids.map(guid => `${toHex(this.ChunkHashList[guid])}_${guid}.chunk`)
 
     let count = 0
     let size = 0

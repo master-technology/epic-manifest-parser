@@ -1,4 +1,5 @@
-import { request } from "../misc/HTTPSUtils";
+import { request } from "./misc/HTTPSUtils";
+
 import crypto from "crypto";
 import { join } from "path";
 import fs from "fs";
@@ -75,7 +76,7 @@ export class ManifestInfo {
     if (!data) throw new Error("Failed to fetch manifest");
 
     let hash = crypto.createHash("sha1").update(data).digest("hex");
-    if (hash !== this.Hash) throw new Error("Manifest is corrupted");
+    if (hash !== this.Hash) throw new Error(`Manifest is corrupted (${hash} != ${this.Hash})`);
 
     if (path) fs.writeFileSync(path, data);
     return data;

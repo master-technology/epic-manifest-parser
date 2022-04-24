@@ -1,7 +1,5 @@
 import { EChunkLoadResult } from "../enums/EChunkLoadResult";
 
-import { request } from "../misc/HTTPSUtils";
-
 import { Manifest } from "./Manifest";
 import { ManifestOptions } from "./ManifestOptions";
 
@@ -10,6 +8,8 @@ import { FChunkPart } from "./data/FChunkPart";
 
 import { FRollingHash } from "./misc/FRollingHash";
 import { FArchive } from "./misc/FArchive";
+import { request } from "./misc/HTTPSUtils";
+import { toHex } from "./misc/HexUtils";
 
 import { join } from "path";
 import crypto from "crypto";
@@ -36,8 +36,13 @@ export class FileChunkPart {
     this.Offset = chunk.Offset;
     this.Size = chunk.Size;
 
-    this.Hash = manifest.ChunkHashList[this.Guid].toString(16).padStart(16, "0").toUpperCase();
-    this.Sha = manifest.ChunkShaList[this.Guid].toString('hex').toUpperCase();
+    this.Hash = toHex(manifest.ChunkHashList[this.Guid]);
+    if (this._options.lazy) {
+      this.Sha = null
+    }
+    else {
+      this.Sha = toHex(manifest.ChunkShaList[this.Guid], 20);
+    }
     this.DataGroup = manifest.DataGroupList[this.Guid].toString();
 
     this.Filename = `${this.Hash}_${this.Guid}.chunk`;
@@ -45,21 +50,23 @@ export class FileChunkPart {
   }
 
   async loadData(): Promise<Buffer> {
-    let dir = this._options.cacheDirectory
+    let { cacheDirectory: dir, lazy } = this._options
     let path = dir != null ? join(dir, this.Filename) : null
 
     let data = Buffer.alloc(0)
     if (path != null && fs.existsSync(path)) {
       data = fs.readFileSync(path)
 
-      let hash = FRollingHash.GetHashForDataSet(data);
-      if (hash.toString(16).toUpperCase().padStart(16, "0") != this.Hash) {
-        throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch`);
-      }
+      if (!lazy) {
+        let hash = toHex(FRollingHash.GetHashForDataSet(data));
+        if (hash != this.Hash) {
+          throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch (${hash} != ${this.Hash})`);
+        }
 
-      let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
-      if (sha != this.Sha) {
-        throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch`);
+        let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
+        if (sha != this.Sha) {
+          throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch (${sha} != ${this.Sha})`);
+        }
       }
     } else {
       if (this._options.chunkBaseUri == null) {
@@ -72,15 +79,16 @@ export class FileChunkPart {
       }
 
       let ar = new FArchive(res.content)
-      if (ar.readUInt32() != FChunkHeader.MAGIC) {
-        throw new Error(`Chunk '${this.Filename}' is invalid: Header magic mismatch`);
+      let magic = ar.readUInt32()
+      if (magic != FChunkHeader.MAGIC) {
+        throw new Error(`Chunk '${this.Filename}' is invalid: Header magic mismatch (0x${toHex(magic)} != 0x${toHex(FChunkHeader.MAGIC)})`);
       }
       ar.seek(0)
 
-      let header = new FChunkHeader(ar)
-      let [ status, buf ] = header.load(ar)
+      let header = new FChunkHeader(ar, lazy)
+      let [ status, buf ] = header.load(ar, lazy)
       if (status != EChunkLoadResult.Success) {
-        throw new Error(`Chunk '${this.Filename}' is invalid: Load result error '${EChunkLoadResult[status]}'`);
+        throw new Error(`Chunk '${this.Filename}' is invalid: Load result 'EChunkLoadResult::${EChunkLoadResult[status]}'`);
       }
 
       data = buf

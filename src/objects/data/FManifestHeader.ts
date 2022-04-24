@@ -23,7 +23,7 @@ export class FManifestHeader {
   /* The SHA1 hash for the manifest data that follows. */
   SHAHash: FSHAHash = new FSHAHash()
 
-  constructor(ar: FArchive) {
+  constructor(ar: FArchive, lazy: boolean) {
     /* Calculate how much space left in the archive for reading data ( will be 0 when writing ). */
     let startPos = ar.tell()
     let sizeLeft = ar.size - startPos
@@ -37,7 +37,12 @@ export class FManifestHeader {
       this.HeaderSize = ar.readUInt32()
       this.DataSizeUncompressed = ar.readUInt32()
       this.DataSizeCompressed = ar.readUInt32()
-      this.SHAHash = new FSHAHash(ar)
+      if (lazy) {
+        ar.skip(FSHAHash.SIZE)
+      }
+      else {
+        this.SHAHash = new FSHAHash(ar)
+      }
       this.StoredAs = ar.readUInt8()
 
       bSuccess = magic === FManifestHeader.MANIFEST_HEADER_MAGIC

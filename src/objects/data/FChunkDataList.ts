@@ -10,7 +10,7 @@ export class FChunkDataList {
   /* The list of chunks. */
   ChunkList: FChunkInfo[]
 
-  constructor(ar: FArchive) {
+  constructor(ar: FArchive, lazy: boolean) {
     /* Serialise the data header type values. */
     let startPos = ar.tell()
     let dataSize = ar.readUInt32()
@@ -26,18 +26,29 @@ export class FChunkDataList {
     if (dataVersion >= EChunkDataListVersion.Original) {
       let guids = ar.readArray(elementCount, () => new FGuid(ar))
       let hashes = ar.readArray(elementCount, () => ar.readUInt64())
-      let shas = ar.readArray(elementCount, () => new FSHAHash(ar))
+      if (lazy) {
+        ar.skip(elementCount * FSHAHash.SIZE) // ShaHash
+      }
+      else {
+        var shas = ar.readArray(elementCount, () => new FSHAHash(ar))
+      }
       let groups = ar.readArray(elementCount, () => ar.readInt8())
-      let windows = ar.readArray(elementCount, () => ar.readInt32())
-      let files = ar.readArray(elementCount, () => ar.readInt64())
+      if (lazy) {
+        ar.skip(elementCount * 4) // WindowSize
+        ar.skip(elementCount * 8) // FileSize
+      }
+      else {
+        var windows = ar.readArray(elementCount, () => ar.readInt32())
+        var files = ar.readArray(elementCount, () => ar.readInt64())
+      }
 
       for (let i = 0; i < elementCount; i++) {
         this.ChunkList[i].Guid = guids[i]
         this.ChunkList[i].Hash = hashes[i]
-        this.ChunkList[i].ShaHash = shas[i]
+        this.ChunkList[i].ShaHash = lazy ? null : shas[i]
         this.ChunkList[i].GroupNumber = groups[i]
-        this.ChunkList[i].WindowSize = windows[i]
-        this.ChunkList[i].FileSize = files[i]
+        this.ChunkList[i].WindowSize = lazy ? null : windows[i]
+        this.ChunkList[i].FileSize = lazy ? null : files[i]
       }
     }
 

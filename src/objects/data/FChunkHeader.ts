@@ -7,6 +7,7 @@ import { EChunkVersion } from "../../enums/EChunkVersion";
 import { FRollingHash } from "../misc/FRollingHash";
 import { FArchive } from "../misc/FArchive";
 import { FSHAHash } from "../misc/FSHAHash";
+import { toHex } from "../misc/HexUtils";
 import { FGuid } from "../misc/FGuid";
 
 import crypto from "crypto";
@@ -36,7 +37,7 @@ export class FChunkHeader {
   /* The FSHA hashed value for this chunk data. */
   SHAHash: FSHAHash
 
-  constructor(ar: FArchive) {
+  constructor(ar: FArchive, lazy: boolean) {
     /* Calculate how much space left in the archive for reading data ( will be 0 when writing ). */
     let startPos = ar.tell()
     let sizeLeft = ar.size - startPos
@@ -50,7 +51,12 @@ export class FChunkHeader {
       this.HeaderSize = ar.readUInt32()
       this.DataSizeCompressed = ar.readUInt32()
       this.Guid = new FGuid(ar)
-      this.RollingHash = ar.readUInt64()
+      if (lazy) {
+        ar.skip(8)
+      }
+      else {
+        this.RollingHash = ar.readUInt64()
+      }
       this.StoredAs = ar.readUInt8()
 
       bSuccess = magic === FChunkHeader.MAGIC
@@ -60,8 +66,14 @@ export class FChunkHeader {
       if (bSuccess && this.Version >= EChunkVersion.StoresShaAndHashType) {
         bSuccess = sizeLeft >= ChunkHeaderVersionSizes[EChunkVersion.StoresShaAndHashType]
         if (bSuccess) {
-          this.SHAHash = new FSHAHash(ar)
-          this.HashType = ar.readUInt8()
+          if (lazy) {
+            ar.skip(FSHAHash.SIZE) // SHAHash
+            ar.skip(1) // HashType
+          }
+          else {
+            this.SHAHash = new FSHAHash(ar)
+            this.HashType = ar.readUInt8()
+          }
         }
         expectedBytes = ChunkHeaderVersionSizes[EChunkVersion.StoresShaAndHashType]
       }
@@ -97,9 +109,9 @@ export class FChunkHeader {
     }
   }
 
-  load(ar: FArchive): [ EChunkLoadResult, Buffer ] {
+  load(ar: FArchive, lazy: boolean): [ EChunkLoadResult, Buffer ] {
     if (!this.Guid.isValid()) return [ EChunkLoadResult.CorruptHeader, null ]
-    if (this.HashType === EChunkHashFlags.None) return [ EChunkLoadResult.MissingHashInfo, null ]
+    if (!lazy && this.HashType === EChunkHashFlags.None) return [ EChunkLoadResult.MissingHashInfo, null ]
 
     /* Begin of read pos. */
     let startPos = ar.tell()
@@ -121,16 +133,16 @@ export class FChunkHeader {
     }
 
     /* Verify. */
-    if ((this.HashType & EChunkHashFlags.RollingPoly64) == EChunkHashFlags.RollingPoly64) {
-      let toHex = (val) => val.toString(16).toUpperCase().padStart(16, "0");
+    if (!lazy) {
+      if ((this.HashType & EChunkHashFlags.RollingPoly64) == EChunkHashFlags.RollingPoly64) {
+        let hash = FRollingHash.GetHashForDataSet(buf);
+        if (toHex(hash) != toHex(this.RollingHash)) return [ EChunkLoadResult.HashCheckFailed, null ]
+      }
 
-      let hash = FRollingHash.GetHashForDataSet(buf);
-      if (toHex(hash) != toHex(this.RollingHash)) return [ EChunkLoadResult.HashCheckFailed, null ]
-    }
-
-    if ((this.HashType & EChunkHashFlags.Sha1) == EChunkHashFlags.Sha1) {
-      let sha = crypto.createHash("sha1").update(buf).digest("hex").toUpperCase()
-      if (sha != this.SHAHash.toString()) return [ EChunkLoadResult.HashCheckFailed, null ]
+      if ((this.HashType & EChunkHashFlags.Sha1) == EChunkHashFlags.Sha1) {
+        let sha = crypto.createHash("sha1").update(buf).digest("hex").toUpperCase()
+        if (sha != this.SHAHash.toString()) return [ EChunkLoadResult.HashCheckFailed, null ]
+      }
     }
 
     return [ EChunkLoadResult.Success, buf ]

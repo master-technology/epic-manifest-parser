@@ -30,7 +30,7 @@ export class FManifestMeta {
   /* A unique build id generated at original chunking time to identify an exact build. */
   BuildId: string = FBuildPatchUtils.GenerateNewBuildId()
 
-  constructor(ar: FArchive) {
+  constructor(ar: FArchive, lazy: boolean) {
     /* Serialise the data header type values. */
     let startPos = ar.tell()
     let dataSize = ar.readUInt32()
@@ -45,10 +45,20 @@ export class FManifestMeta {
       this.BuildVersion = ar.readFString()
       this.LaunchExe = ar.readFString()
       this.LaunchCommand = ar.readFString()
-      this.PrereqIds = ar.readArray((_ar) => _ar.readFString())
-      this.PrereqName = ar.readFString()
-      this.PrereqPath = ar.readFString()
-      this.PrereqArgs = ar.readFString()
+      if (lazy) {
+        let count = ar.readUInt32()
+        for (let i = 0; i < count; i++) // PrereqIds
+          ar.skip(ar.readInt32())
+        ar.skip(ar.readInt32()) // PrereqName
+        ar.skip(ar.readInt32()) // PrereqPath
+        ar.skip(ar.readInt32()) // PrereqArgs
+      }
+      else {
+        this.PrereqIds = ar.readArray((_ar) => _ar.readFString())
+        this.PrereqName = ar.readFString()
+        this.PrereqPath = ar.readFString()
+        this.PrereqArgs = ar.readFString()
+      }
     }
 
     if (dataVersion >= EManifestMetaVersion.SerialisesBuildId) {

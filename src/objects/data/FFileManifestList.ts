@@ -10,7 +10,7 @@ export class FFileManifestList {
   /* The list of files. */
   FileList: FFileManifest[]
 
-  constructor(ar: FArchive) {
+  constructor(ar: FArchive, lazy: boolean) {
     /* Serialise the data header type values. */
     let startPos = ar.tell()
     let dataSize = ar.readUInt32()
@@ -22,18 +22,34 @@ export class FFileManifestList {
     /* Serialise the ManifestMetaVersion::Original version variables. */
     if (dataVersion >= EFileManifestListVersion.Original) {
       let names = ar.readArray(elementCount, () => ar.readFString())
-      let links = ar.readArray(elementCount, () => ar.readFString())
-      let hashes = ar.readArray(elementCount, () => new FSHAHash(ar))
-      let flags = ar.readArray(elementCount, () => ar.readUInt8())
-      let tags = ar.readArray(elementCount, () => ar.readArray(() => ar.readFString()))
+      if (lazy) {
+        for (let i = 0; i < elementCount; i++) // SymlinkTarget
+          ar.skip(ar.readInt32())
+
+        ar.skip(elementCount * FSHAHash.SIZE) // FileHash
+        ar.skip(elementCount * 1) // FileMetaFlags
+
+        for (let i = 0; i < elementCount; i++) {
+          let count = ar.readUInt32();
+          for (let j = 0; j < count; j++) { // InstallTags
+            ar.skip(ar.readInt32())
+          }
+        }
+      }
+      else {
+        var links = ar.readArray(elementCount, () => ar.readFString())
+        var hashes = ar.readArray(elementCount, () => new FSHAHash(ar))
+        var flags = ar.readArray(elementCount, () => ar.readUInt8())
+        var tags = ar.readArray(elementCount, () => ar.readArray(() => ar.readFString()))
+      }
       let chunks = ar.readArray(elementCount, () => ar.readArray(() => new FChunkPart(ar)))
 
       for (let i = 0; i < elementCount; i++) {
         this.FileList[i].Filename = names[i]
-        this.FileList[i].SymlinkTarget = links[i]
-        this.FileList[i].FileHash = hashes[i]
-        this.FileList[i].FileMetaFlags = flags[i]
-        this.FileList[i].InstallTags = tags[i]
+        this.FileList[i].SymlinkTarget = lazy ? null : links[i]
+        this.FileList[i].FileHash = lazy ? null : hashes[i]
+        this.FileList[i].FileMetaFlags = lazy ? null : flags[i]
+        this.FileList[i].InstallTags = lazy ? null : tags[i]
         this.FileList[i].ChunkParts = chunks[i]
       }
     }
@@ -46,8 +62,8 @@ export class FFileManifestList {
   OnPostLoad() {
     this.FileList = this.FileList.sort((a, b) => a.Filename > b.Filename ? 1 : -1)
 
-    for (let FileManifest of this.FileList) {
-      FileManifest.FileSize = FileManifest.ChunkParts.reduce((acc, c) => acc + c.Size, 0)
+    for (let file of this.FileList) {
+      file.FileSize = file.ChunkParts.reduce((acc, c) => acc + c.Size, 0)
     }
   }
 }

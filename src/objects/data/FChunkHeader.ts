@@ -4,6 +4,7 @@ import { EChunkLoadResult } from "../../enums/EChunkLoadResult";
 import { EChunkHashFlags } from "../../enums/EChunkHashFlags";
 import { EChunkVersion } from "../../enums/EChunkVersion";
 
+import { FRollingHash } from "../misc/FRollingHash";
 import { FArchive } from "../misc/FArchive";
 import { FSHAHash } from "../misc/FSHAHash";
 import { FGuid } from "../misc/FGuid";
@@ -121,11 +122,10 @@ export class FChunkHeader {
 
     /* Verify. */
     if ((this.HashType & EChunkHashFlags.RollingPoly64) == EChunkHashFlags.RollingPoly64) {
-      // TODO: implement 'FRollingHash::GetHashForDataSet'
-      // let hash = FRollingHash.GetHashForDataSet(buf);
-      // if (hash.toString("hex") != this.RollingHash) {
-      //   throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch`);
-      // }
+      let toHex = (val) => val.toString(16).toUpperCase().padStart(16, "0");
+
+      let hash = FRollingHash.GetHashForDataSet(buf);
+      if (toHex(hash) != toHex(this.RollingHash)) return [ EChunkLoadResult.HashCheckFailed, null ]
     }
 
     if ((this.HashType & EChunkHashFlags.Sha1) == EChunkHashFlags.Sha1) {

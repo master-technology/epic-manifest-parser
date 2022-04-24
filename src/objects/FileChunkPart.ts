@@ -8,6 +8,7 @@ import { ManifestOptions } from "./ManifestOptions";
 import { FChunkHeader } from "./data/FChunkHeader";
 import { FChunkPart } from "./data/FChunkPart";
 
+import { FRollingHash } from "./misc/FRollingHash";
 import { FArchive } from "./misc/FArchive";
 
 import { join } from "path";
@@ -51,11 +52,10 @@ export class FileChunkPart {
     if (path != null && fs.existsSync(path)) {
       data = fs.readFileSync(path)
 
-      // TODO: implement 'FRollingHash::GetHashForDataSet'
-      // let hash = FRollingHash.GetHashForDataSet(buf);
-      // if (hash.toString("hex") != this.Hash) {
-      //   throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch`);
-      // }
+      let hash = FRollingHash.GetHashForDataSet(data);
+      if (hash.toString(16).toUpperCase().padStart(16, "0") != this.Hash) {
+        throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch`);
+      }
 
       let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
       if (sha != this.Sha) {

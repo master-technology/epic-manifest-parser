@@ -20,5 +20,8 @@
   "devDependencies": {
     "@types/node": "^16.4.10",
     "typescript": "^4.3.5"
+  },
+  "dependencies": {
+    "long": "^5.2.0"
   }
 }

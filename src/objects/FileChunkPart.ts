@@ -43,7 +43,7 @@ export class FileChunkPart {
     else {
       this.Sha = toHex(manifest.ChunkShaList[this.Guid], 20);
     }
-    this.DataGroup = manifest.DataGroupList[this.Guid].toString();
+    this.DataGroup = ('00' + manifest.DataGroupList[this.Guid].toString()).substr(-2);
 
     this.Filename = `${this.Hash}_${this.Guid}.chunk`;
     this.Url = `${this.DataGroup}/${this.Filename}`;

@@ -1,6 +1,6 @@
 {
   "name": "epic-manifest-parser",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "A NodeJS library to read EpicGame's manifests",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

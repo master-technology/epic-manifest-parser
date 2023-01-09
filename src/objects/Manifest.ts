@@ -1,22 +1,22 @@
-import { EManifestStorageFlags } from "../enums/EManifestStorageFlags";
-import { EFeatureLevel } from "../enums/EFeatureLevel";
+import {EManifestStorageFlags} from "../enums/EManifestStorageFlags";
+import {EFeatureLevel} from "../enums/EFeatureLevel";
 
-import { FFileManifestList } from "./data/FFileManifestList";
-import { FManifestHeader } from "./data/FManifestHeader";
-import { FChunkDataList } from "./data/FChunkDataList";
-import { FCustomFields } from "./data/FCustomFields";
-import { FManifestMeta } from "./data/FManifestMeta";
+import {FFileManifestList} from "./data/FFileManifestList";
+import {FManifestHeader} from "./data/FManifestHeader";
+import {FChunkDataList} from "./data/FChunkDataList";
+import {FCustomFields} from "./data/FCustomFields";
+import {FManifestMeta} from "./data/FManifestMeta";
 
-import { FArchive } from "./misc/FArchive";
-import { toHex } from "./misc/HexUtils";
+import {FArchive} from "./misc/FArchive";
+import {toHex} from "./misc/HexUtils";
 
-import { ManifestOptions } from "./ManifestOptions";
-import { FileManifest } from "./FileManifest";
+import {ManifestOptions} from "./ManifestOptions";
+import {FileManifest} from "./FileManifest";
 
-import crypto from "crypto";
-import path from "path";
-import zlib from "zlib";
-import fs from "fs";
+import * as crypto from "node:crypto";
+import * as path from "node:path";
+import * as zlib from "node:zlib";
+import * as fs from "node:fs";
 
 export class Manifest {
   ManifestFileVersion: number
@@ -43,79 +43,106 @@ export class Manifest {
   constructor(data: Buffer, options?: ManifestOptions) {
     if (options) this.Options = options
 
+    let meta, chunkData, fileData, customFields;
+
     if (data instanceof Buffer) {
-      let magic = data.readUInt32LE()
-      if (magic === FManifestHeader.MANIFEST_HEADER_MAGIC) {
-        let ar = new FArchive(data)
+      // JSON based Manifest Starts with { and ends with }
+      if (data.length > 1 && data[0] === 123 && data[data.length-1] === 125) {
+        const manifestData = JSON.parse(data.toString());
+        // If this manifest has been parsed, it will have a number rather than a string value here...
+        manifestData.parsed = typeof manifestData.ManifestFileVersion !== "string";
 
-        let header = new FManifestHeader(ar, options.lazy)
-
-        let bytes
-        if ((header.StoredAs & EManifestStorageFlags.Encrypted) == EManifestStorageFlags.Encrypted) {
-          throw new Error("Manifest is invalid: Data is encrypted");
-        }
-        else if ((header.StoredAs & EManifestStorageFlags.Compressed) == EManifestStorageFlags.Compressed) {
-          let buf = ar.read(header.DataSizeCompressed)
-          let decompressed = zlib.inflateSync(buf)
-          bytes = decompressed
-        }
-        else if ((header.StoredAs & EManifestStorageFlags.Compressed) == EManifestStorageFlags.Compressed) {
-          let buf = ar.read(header.DataSizeCompressed)
-          bytes = buf
-        }
-
-        if (bytes.length != header.DataSizeUncompressed) {
-          throw new Error(`Manifest is invalid: Data size mismatch (${bytes.length} != ${header.DataSizeUncompressed})`);
-        }
-
-        if (!options.lazy) {
-          let hash = crypto.createHash("sha1").update(bytes).digest("hex").toUpperCase();
-          if (hash !== header.SHAHash.toString()) throw new Error(`Manifest is corrupted (${hash} != ${header.SHAHash.toString()})`);
-        }
-
-        ar = new FArchive(bytes)
-        let meta = new FManifestMeta(ar, options.lazy)
-        let chunkData = new FChunkDataList(ar, options.lazy)
-        let fileData = new FFileManifestList(ar, options.lazy)
-        let customFields = new FCustomFields(ar)
-
-        this.ManifestFileVersion                                       = meta.FeatureLevel
-        this.bIsFileData                                               = meta.bIsFileData
-        this.AppID                                                     = meta.AppID
-        this.AppName                                                   = meta.AppName
-        this.BuildVersion                                              = meta.BuildVersion
-        this.BuildId                                                   = meta.BuildId
-        this.LaunchExe                                                 = meta.LaunchExe
-        this.LaunchCommand                                             = meta.LaunchCommand
-        this.PrereqIds                                                 = meta.PrereqIds
-        this.PrereqName                                                = meta.PrereqName
-        this.PrereqPath                                                = meta.PrereqPath
-        this.PrereqArgs                                                = meta.PrereqArgs
-        this.ChunkHashList                                             = chunkData.ChunkList.reduce((acc, chunk) => {
-          acc[chunk.Guid.toString()] = chunk.Hash
-          return acc
-        }, {})
-        this.ChunkShaList                                              = chunkData.ChunkList.reduce((acc, chunk) => {
-          acc[chunk.Guid.toString()] = chunk.ShaHash?.Hash || null
-          return acc
-        }, {})
-        this.DataGroupList                                             = chunkData.ChunkList.reduce((acc, chunk) => {
-          acc[chunk.Guid.toString()] = chunk.GroupNumber
-          return acc
-        }, {})
-        this.ChunkFilesizeList                                         = chunkData.ChunkList.reduce((acc, chunk) => {
-          acc[chunk.Guid.toString()] = chunk.FileSize
-          return acc
-        }, {})
-        this.CustomFields                                              = Object.fromEntries(customFields.Fields)
-
-        this.FileManifestList = fileData.FileList.map(file => new FileManifest(file, this))
+        meta = new FManifestMeta(manifestData, options.lazy);
+        chunkData = new FChunkDataList(manifestData, options.lazy);
+        fileData = new FFileManifestList(manifestData, options.lazy);
+        customFields = new FCustomFields(manifestData);
       } else {
-        throw new Error(`Manifest is invalid: Header magic mismatch (0x${toHex(magic)} != 0x${toHex(FManifestHeader.MANIFEST_HEADER_MAGIC)})`);
+        // Binary Manifest
+        let magic = data.readUInt32LE()
+        if (magic === FManifestHeader.MANIFEST_HEADER_MAGIC) {
+          let ar = new FArchive(data)
+
+          let header = new FManifestHeader(ar, options.lazy)
+
+          let bytes;
+          if ((header.StoredAs & EManifestStorageFlags.Encrypted) == EManifestStorageFlags.Encrypted) {
+            throw new Error("Manifest is invalid: Data is encrypted");
+          } else if ((header.StoredAs & EManifestStorageFlags.Compressed) == EManifestStorageFlags.Compressed) {
+            let buf = ar.read(header.DataSizeCompressed)
+            bytes = zlib.inflateSync(buf)
+          } else if ((header.StoredAs & EManifestStorageFlags.Compressed) == EManifestStorageFlags.Compressed) {
+            bytes = ar.read(header.DataSizeCompressed)
+          }
+
+          if (bytes.length != header.DataSizeUncompressed) {
+            throw new Error(`Manifest is invalid: Data size mismatch (${bytes.length} != ${header.DataSizeUncompressed})`);
+          }
+
+          if (!options.lazy) {
+            let hash = crypto.createHash("sha1").update(bytes).digest("hex").toUpperCase();
+            if (hash !== header.SHAHash.toString()) throw new Error(`Manifest is corrupted (${hash} != ${header.SHAHash.toString()})`);
+          }
+
+          ar = new FArchive(bytes)
+          meta = new FManifestMeta(ar, options.lazy)
+          chunkData = new FChunkDataList(ar, options.lazy)
+          fileData = new FFileManifestList(ar, options.lazy)
+          customFields = new FCustomFields(ar)
+        } else {
+          throw new Error(`Manifest is invalid: Header magic mismatch (0x${toHex(magic)} != 0x${toHex(FManifestHeader.MANIFEST_HEADER_MAGIC)})`);
+        }
       }
+
+      this.ManifestFileVersion = meta.FeatureLevel
+      this.bIsFileData = meta.bIsFileData
+      this.AppID = meta.AppID
+      this.AppName = meta.AppName
+      this.BuildVersion = meta.BuildVersion
+      this.BuildId = meta.BuildId
+      this.LaunchExe = meta.LaunchExe
+      this.LaunchCommand = meta.LaunchCommand
+      this.PrereqIds = meta.PrereqIds
+      this.PrereqName = meta.PrereqName
+      this.PrereqPath = meta.PrereqPath
+      this.PrereqArgs = meta.PrereqArgs
+      this.ChunkHashList = chunkData.ChunkList.reduce((acc, chunk) => {
+        acc[chunk.Guid.toString()] = chunk.Hash
+        return acc
+      }, {})
+      this.ChunkShaList = chunkData.ChunkList.reduce((acc, chunk) => {
+        acc[chunk.Guid.toString()] = chunk.ShaHash?.Hash || null
+        return acc
+      }, {})
+      this.DataGroupList = chunkData.ChunkList.reduce((acc, chunk) => {
+        acc[chunk.Guid.toString()] = chunk.GroupNumber
+        return acc
+      }, {})
+      this.ChunkFilesizeList = chunkData.ChunkList.reduce((acc, chunk) => {
+        acc[chunk.Guid.toString()] = chunk.FileSize
+        return acc
+      }, {})
+      this.CustomFields = Object.fromEntries(customFields.Fields)
+
+
+      this.FileManifestList = fileData.FileList.map(file => new FileManifest(file, this))
+
     } else {
       throw new Error("Manifest constructor requires a buffer");
     }
+  }
+
+  toJSON() {
+    return {
+      ManifestFileVersion: this.ManifestFileVersion, bIsFileData: this.bIsFileData,
+      AppID: this.AppID, AppNameString: this.AppName, BuildVersionString: this.BuildVersion,
+      BuildId: this.BuildId, LaunchExeString: this.LaunchExe, LaunchCommand: this.LaunchCommand,
+      PrereqIds: this.PrereqIds, PrereqName: this.PrereqName, PrereqPath: this.PrereqPath,
+      PrereqArgs: this.PrereqArgs,
+      FileManifestList: this.FileManifestList,
+      ChunkHashList: this.ChunkHashList, ChunkShaList: this.ChunkShaList,
+      DataGroupList: this.DataGroupList, ChunkFilesizeList: this.ChunkFilesizeList,
+      CustomFields: this.CustomFields
+    };
   }
 
   deleteUnusedChunks() {

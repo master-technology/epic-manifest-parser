@@ -27,17 +27,17 @@ export class FileChunkPart {
   Filename: string
   Url: string
 
-  _options: ManifestOptions
+  readonly #options: ManifestOptions
 
   constructor(chunk: FChunkPart, manifest: Manifest) {
-    this._options = manifest.Options;
+    this.#options = manifest.Options;
 
     this.Guid = chunk.Guid.toString();
     this.Offset = chunk.Offset;
     this.Size = chunk.Size;
 
     this.Hash = toHex(manifest.ChunkHashList[this.Guid]);
-    if (this._options.lazy) {
+    if (this.#options.lazy) {
       this.Sha = null
     }
     else {
@@ -50,7 +50,7 @@ export class FileChunkPart {
   }
 
   async loadData(): Promise<Buffer> {
-    let { cacheDirectory: dir, lazy } = this._options
+    let { cacheDirectory: dir, lazy } = this.#options
     let path = dir != null ? join(dir, this.Filename) : null
 
     let data = Buffer.alloc(0)
@@ -69,11 +69,11 @@ export class FileChunkPart {
         }
       }
     } else {
-      if (this._options.chunkBaseUri == null) {
+      if (this.#options.chunkBaseUri == null) {
         throw new Error("'<ManifestOptions>.chunkBaseUri' can not be empty for downloading chunks");
       }
 
-      let res = await request({ uri: this._options.chunkBaseUri + (this._options.chunkBaseUri.endsWith("/") ? "" : "/") + this.Url })
+      let res = await request({ uri: this.#options.chunkBaseUri + (this.#options.chunkBaseUri.endsWith("/") ? "" : "/") + this.Url })
       if (res.status != 200) {
         throw new Error(`Failed to download '${this.Filename}': Request failed with status '${res.status}'`);
       }

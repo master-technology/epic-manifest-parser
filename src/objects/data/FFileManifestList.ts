@@ -10,7 +10,34 @@ export class FFileManifestList {
   /* The list of files. */
   FileList: FFileManifest[]
 
-  constructor(ar: FArchive, lazy: boolean) {
+  constructor(data, lazy: boolean) {
+    if (data instanceof FArchive) {
+      this.#fromFArchive(data, lazy);
+    } else {
+      this.#fromJSON(data);
+    }
+  }
+
+  #fromJSON(manifest) {
+    this.FileList = [];
+    for (let i=0;i<manifest.FileManifestList.length;i++) {
+      let fileList = new FFileManifest();
+      fileList.Filename = manifest.FileManifestList[i].Filename;
+      fileList.FileHash = new FSHAHash(manifest.FileManifestList[i].FileHash);
+      fileList.SymlinkTarget = manifest.SymlinkTarget || "";
+      fileList.FileMetaFlags = manifest.FileMetaFlags || 0;
+      fileList.InstallTags = manifest.InstallTags || [];
+      fileList.ChunkParts = [];
+      fileList.FileSize = 0;
+      for (let j=0;j<manifest.FileManifestList[i].FileChunkParts.length;j++) {
+        fileList.ChunkParts.push(new FChunkPart(manifest.FileManifestList[i].FileChunkParts[j], manifest.parsed));
+      }
+      this.FileList.push(fileList);
+    }
+    this.OnPostLoad();
+  }
+
+  #fromFArchive(ar: FArchive, lazy: boolean) {
     /* Serialise the data header type values. */
     let startPos = ar.tell()
     let dataSize = ar.readUInt32()

@@ -6,7 +6,22 @@ export class FCustomFields {
   /* The map of field name to field data. */
   Fields: Map<string, string>
 
-  constructor(ar: FArchive) {
+  constructor(data) {
+    if (data instanceof FArchive) {
+      this.#fromFArchive(data);
+    } else {
+      this.#fromJSON(data);
+    }
+  }
+
+  #fromJSON(manifest) {
+    this.Fields = new Map<string, string>()
+    for (let key in manifest.CustomFields) {
+      this.Fields.set(key, manifest.CustomFields[key]);
+    }
+  }
+
+  #fromFArchive(ar: FArchive) {
     /* Serialise the data header type values. */
     let startPos = ar.tell()
     let dataSize = ar.readUInt32()

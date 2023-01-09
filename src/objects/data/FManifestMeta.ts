@@ -3,6 +3,7 @@ import { EFeatureLevel } from "../../enums/EFeatureLevel";
 
 import * as FBuildPatchUtils from "../misc/FBuildPatchUtils";
 import { FArchive } from "../misc/FArchive";
+import {EpicReversedDecimalToNumber} from "../misc/HexUtils";
 
 export class FManifestMeta {
   /* The feature level support this build was created with, regardless of the serialised format. */
@@ -30,7 +31,35 @@ export class FManifestMeta {
   /* A unique build id generated at original chunking time to identify an exact build. */
   BuildId: string = FBuildPatchUtils.GenerateNewBuildId()
 
-  constructor(ar: FArchive, lazy: boolean) {
+
+  constructor(data: FArchive | any, lazy: boolean = false) {
+    if (data instanceof FArchive) {
+       this.#fromFArchive(data as FArchive, lazy);
+    } else {
+       this.#fromJSON(data);
+    }
+  }
+
+  #fromJSON(data: any) {
+    if (data.parsed) {
+      this.FeatureLevel = data.ManifestFileVersion as EFeatureLevel;
+    } else {
+      this.FeatureLevel = EpicReversedDecimalToNumber(data.ManifestFileVersion) as EFeatureLevel;
+    }
+    this.AppID = data.AppID;
+    this.bIsFileData = data.bIsFileData;
+    this.AppName = data.AppNameString;
+    this.BuildVersion = data.BuildVersionString;
+    this.LaunchExe = data.LaunchExeString;
+    this.LaunchCommand = data.LaunchCommand;
+    this.PrereqIds = data.PrereqIds;
+    this.PrereqName = data.PrereqName;
+    this.PrereqPath = data.PrereqPath;
+    this.PrereqArgs = data.PrereqArgs;
+    this.BuildId = data.BuildId ? data.BuildId : FBuildPatchUtils.GetBackwardsCompatibleBuildId(this);
+  }
+
+  #fromFArchive(ar: FArchive, lazy: boolean) {
     /* Serialise the data header type values. */
     let startPos = ar.tell()
     let dataSize = ar.readUInt32()

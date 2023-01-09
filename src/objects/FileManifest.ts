@@ -30,5 +30,16 @@ export class FileManifest {
     this.Tags = file.InstallTags;
   }
 
+  toJSON() {
+    return {
+      Filename: this.Name,
+      FileHash: this.Hash,
+      SymlinkTarget: this.SymlinkTarget,
+      FileChunkParts: this.Chunks,
+      MetaFlags: this.MetaFlags,
+      Tags: this.Tags
+    }
+  }
+
   getStream() { return new FileManifestStream(this) }
 }

@@ -5,12 +5,56 @@ import { FChunkInfo } from "./FChunkInfo";
 import { FArchive } from "../misc/FArchive";
 import { FSHAHash } from "../misc/FSHAHash";
 import { FGuid } from "../misc/FGuid";
+import {EpicReversedDecimalToBigInt} from "../misc/HexUtils";
 
 export class FChunkDataList {
   /* The list of chunks. */
   ChunkList: FChunkInfo[]
 
-  constructor(ar: FArchive, lazy: boolean) {
+  constructor(data, lazy: boolean) {
+    if (data instanceof FArchive) {
+      this.#fromFArchive(data as FArchive, lazy);
+    } else {
+      this.#fromJSON(data);
+    }
+  }
+
+  #fromJSON(manifest) {
+    // Used to track the ChunkInfo by the GUID
+    const elements = {};
+
+    // An array of all Chunklists
+    this.ChunkList = [];
+    for (let elem in manifest.ChunkHashList) {
+      if (!elements[elem]) {
+        const chunkInfo = new FChunkInfo();
+        chunkInfo.Guid = new FGuid(elem);
+        chunkInfo.Hash = BigInt(manifest.ChunkHashList[elem]);
+        elements[elem] = chunkInfo;
+        this.ChunkList.push(chunkInfo);
+      } else {
+        console.error("Duplicate Chunk Guid", elem);
+      }
+    }
+    if (manifest.parsed) {
+      for (let elem in manifest.ChunkFilesizeList) {
+        elements[elem].FileSize = BigInt(manifest.ChunkFilesizeList[elem]);
+      }
+    } else {
+      for (let elem in manifest.ChunkFilesizeList) {
+        elements[elem].FileSize = EpicReversedDecimalToBigInt(manifest.ChunkFilesizeList[elem]);
+      }
+    }
+
+   for (let elem in manifest.DataGroupList) {
+     elements[elem].GroupNumber = parseInt(manifest.DataGroupList[elem], 10);
+   }
+   for (let elem in manifest.ChunkShaList) {
+      elements[elem].ShaHash = new FSHAHash(manifest.ChunkShaList[elem]);
+   }
+  }
+
+  #fromFArchive(ar: FArchive, lazy: boolean): void {
     /* Serialise the data header type values. */
     let startPos = ar.tell()
     let dataSize = ar.readUInt32()

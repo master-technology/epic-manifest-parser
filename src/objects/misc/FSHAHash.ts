@@ -6,6 +6,7 @@ export class FSHAHash {
 
   constructor(ar: FArchive)
   constructor(buf: Buffer)
+  constructor(buf: String)
   constructor()
 
   constructor(data?) {
@@ -15,6 +16,9 @@ export class FSHAHash {
     } else if (data instanceof Buffer) {
       let buf = Buffer.alloc(20)
       buf.copy(this.Hash, 0, 0, FSHAHash.SIZE)
+    } else if (typeof data === "string") {
+      let buf = Buffer.from(data, 'hex');
+      buf.copy(this.Hash, 0, 0, FSHAHash.SIZE);
     }
   }
 

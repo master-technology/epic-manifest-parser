@@ -5,6 +5,7 @@ import { FChunkPart } from "./FChunkPart";
 
 import { FArchive } from "../misc/FArchive";
 import { FSHAHash } from "../misc/FSHAHash";
+import {EpicDecimalToHex, EpicReversedDecimalToHex} from "../misc/HexUtils";
 
 export class FFileManifestList {
   /* The list of files. */
@@ -23,7 +24,7 @@ export class FFileManifestList {
     for (let i=0;i<manifest.FileManifestList.length;i++) {
       let fileList = new FFileManifest();
       fileList.Filename = manifest.FileManifestList[i].Filename;
-      fileList.FileHash = new FSHAHash(manifest.FileManifestList[i].FileHash);
+      fileList.FileHash = new FSHAHash(manifest.parsed ? manifest.FileManifestList[i].FileHash : EpicDecimalToHex(manifest.FileManifestList[i].FileHash));
       fileList.SymlinkTarget = manifest.SymlinkTarget || "";
       fileList.FileMetaFlags = manifest.FileMetaFlags || 0;
       fileList.InstallTags = manifest.InstallTags || [];

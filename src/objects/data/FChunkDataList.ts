@@ -29,7 +29,7 @@ export class FChunkDataList {
       if (!elements[elem]) {
         const chunkInfo = new FChunkInfo();
         chunkInfo.Guid = new FGuid(elem);
-        chunkInfo.Hash = BigInt(manifest.ChunkHashList[elem]);
+        chunkInfo.Hash = manifest.parsed ? BigInt( manifest.ChunkHashList[elem] ) : EpicReversedDecimalToBigInt(manifest.ChunkHashList[elem]);
         elements[elem] = chunkInfo;
         this.ChunkList.push(chunkInfo);
       } else {

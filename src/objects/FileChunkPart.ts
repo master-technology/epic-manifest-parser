@@ -26,6 +26,7 @@ export class FileChunkPart {
 
   Filename: string
   Url: string
+  Data = null;
 
   readonly #options: ManifestOptions
 
@@ -49,24 +50,33 @@ export class FileChunkPart {
     this.Url = `${this.DataGroup}/${this.Filename}`;
   }
 
+  clearData() {
+    this.Data = null;
+  }
+
   async loadData(): Promise<Buffer> {
     let { cacheDirectory: dir, lazy } = this.#options
     let path = dir != null ? join(dir, this.Filename) : null
 
     let data = Buffer.alloc(0)
     if (path != null && fs.existsSync(path)) {
-      data = fs.readFileSync(path)
+      if (this.Data) {
+        data = this.Data;
+      } else {
+        data = fs.readFileSync(path)
 
-      if (!lazy) {
-        let hash = toHex(FRollingHash.GetHashForDataSet(data));
-        if (hash != this.Hash) {
-          throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch (${hash} != ${this.Hash})`);
-        }
+        if (!lazy) {
+          let hash = toHex(FRollingHash.GetHashForDataSet(data));
+          if (hash != this.Hash) {
+            throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch (${hash} != ${this.Hash})`);
+          }
 
-        let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
-        if (sha != this.Sha) {
-          throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch (${sha} != ${this.Sha})`);
+          let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
+          if (sha != this.Sha) {
+            throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch (${sha} != ${this.Sha})`);
+          }
         }
+        this.Data = data;
       }
     } else {
       if (this.#options.chunkBaseUri == null) {
@@ -95,6 +105,7 @@ export class FileChunkPart {
 
       data = buf
       if (path != null) fs.writeFileSync(path, data)
+      this.Data = data;
     }
 
     let result = Buffer.alloc(this.Size)

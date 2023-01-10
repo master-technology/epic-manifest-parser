@@ -6,6 +6,7 @@ import { Readable } from "stream";
 export class FileManifestStream extends Readable {
   length: number = 0
   position: number = 0
+  _streamId: number = Math.random();
 
   private _chunks: FileChunkPart[]
   private _startPositions: number[]
@@ -24,6 +25,13 @@ export class FileManifestStream extends Readable {
     }
   }
 
+  _destroy() {
+    // Clear the cached data....
+    for (let i=0;i<this._chunks.length;i++) {
+      this._chunks[i].clearData();
+    }
+  }
+
   async _read(count: number) {
     if (count == 0 || this.position >= this.length) {
       this.push(null)
@@ -37,6 +45,9 @@ export class FileManifestStream extends Readable {
       if (index == -1) break;
 
       let chunk = this._chunks[index];
+      if (index > 0) {
+        this._chunks[index-1].clearData();
+      }
       let data = await chunk.loadData();
       let off = this.position - this._startPositions[index];
 

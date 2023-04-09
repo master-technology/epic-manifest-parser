@@ -71,9 +71,12 @@ export class FileChunkPart {
             throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch (${hash} != ${this.Hash})`);
           }
 
-          let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
-          if (sha != this.Sha) {
-            throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch (${sha} != ${this.Sha})`);
+          // We have No SHA
+          if (this.Sha !== "00000000000000000000") {
+            let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
+            if (sha != this.Sha) {
+              throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch (${sha} != ${this.Sha})`);
+            }
           }
         }
         this.Data = data;

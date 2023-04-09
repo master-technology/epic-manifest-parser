@@ -43,10 +43,12 @@ export class FManifestMeta {
   #fromJSON(data: any) {
     if (data.parsed) {
       this.FeatureLevel = data.ManifestFileVersion as EFeatureLevel;
+      this.AppID = data.AppID;
     } else {
       this.FeatureLevel = EpicReversedDecimalToNumber(data.ManifestFileVersion) as EFeatureLevel;
+      this.AppID = EpicReversedDecimalToNumber(data.AppID);
+
     }
-    this.AppID = data.AppID;
     this.bIsFileData = data.bIsFileData;
     this.AppName = data.AppNameString;
     this.BuildVersion = data.BuildVersionString;

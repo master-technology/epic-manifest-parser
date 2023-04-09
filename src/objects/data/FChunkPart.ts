@@ -13,8 +13,9 @@ export class FChunkPart {
   constructor(data, parsed = false) {
     if (data instanceof FArchive) {
       this.#fromFArchive(data);
+    } else {
+        this.#fromJSON(data, parsed)
     }
-      this.#fromJSON(data, parsed)
   }
 
 

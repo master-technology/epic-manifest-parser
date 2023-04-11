@@ -20,7 +20,6 @@ export function GetBackwardsCompatibleBuildId(data: FManifestMeta): string {
   let hash = crypto.createHash("sha1")
 
   let buf = Buffer.alloc(4)
-  console.log("Data", data.AppID, typeof data.AppID);
   buf.writeUInt32LE(data.AppID)
   hash.update(buf)
   hash.update(Buffer.from(data.AppName))

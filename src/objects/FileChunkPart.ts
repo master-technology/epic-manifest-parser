@@ -87,9 +87,8 @@ export class FileChunkPart {
       }
 
       let url = this.#options.chunkBaseUri + (this.#options.chunkBaseUri.endsWith("/") ? "" : "/") + this.Url;
-      let res = await request({ uri: url })
+      let res = await request({uri: url})
       if (res.status != 200) {
-        console.log("url failed to download", url);
         throw new Error(`Failed to download '${this.Filename}': Request failed with status '${res.status}'`);
       }
 

@@ -8,10 +8,10 @@ import { FChunkPart } from "./data/FChunkPart";
 
 import { FRollingHash } from "./misc/FRollingHash";
 import { FArchive } from "./misc/FArchive";
-import { request } from "./misc/HTTPSUtils";
-import { toHex } from "./misc/HexUtils";
+import { request, Response} from "./misc/HTTPSUtils";
+import {toHex} from "./misc/HexUtils";
 
-import { join } from "path";
+import {join} from "path";
 import crypto from "crypto";
 import fs from "fs";
 
@@ -40,8 +40,7 @@ export class FileChunkPart {
     this.Hash = toHex(manifest.ChunkHashList[this.Guid]);
     if (this.#options.lazy) {
       this.Sha = null
-    }
-    else {
+    } else {
       this.Sha = toHex(manifest.ChunkShaList[this.Guid], 20);
     }
     this.DataGroup = ('00' + manifest.DataGroupList[this.Guid].toString()).substr(-2);
@@ -55,7 +54,7 @@ export class FileChunkPart {
   }
 
   async loadData(): Promise<Buffer> {
-    let { cacheDirectory: dir, lazy } = this.#options
+    let {cacheDirectory: dir, lazy} = this.#options
     let path = dir != null ? join(dir, this.Filename) : null
 
     let data = Buffer.alloc(0)
@@ -87,7 +86,12 @@ export class FileChunkPart {
       }
 
       let url = this.#options.chunkBaseUri + (this.#options.chunkBaseUri.endsWith("/") ? "" : "/") + this.Url;
-      let res = await request({uri: url})
+      let res: Response;
+      try {
+        res = await request({uri: url});
+      } catch (e) {
+        throw new Error(`Failed to download '${this.Filename}': Request failed with error '${e}'`);
+      }
       if (res.status != 200) {
         throw new Error(`Failed to download '${this.Filename}': Request failed with status '${res.status}'`);
       }

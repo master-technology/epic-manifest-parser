@@ -5,7 +5,8 @@ import { FChunkPart } from "./FChunkPart";
 
 import { FArchive } from "../misc/FArchive";
 import { FSHAHash } from "../misc/FSHAHash";
-import {EpicDecimalToHex, EpicReversedDecimalToHex} from "../misc/HexUtils";
+import { FSHA256Hash } from "../misc/FSHA256Hash";
+import {EpicDecimalToHex} from "../misc/HexUtils";
 
 export class FFileManifestList {
   /* The list of files. */
@@ -28,6 +29,14 @@ export class FFileManifestList {
       fileList.SymlinkTarget = manifest.SymlinkTarget || "";
       fileList.FileMetaFlags = manifest.FileMetaFlags || 0;
       fileList.InstallTags = manifest.InstallTags || [];
+      fileList.mimeType = manifest.mimeType || "";
+      fileList.md5Hash = manifest.md5Hash || "";
+      if (manifest.sha256Hash && manifest.sha256Hash.length === 32) {
+        fileList.sha256Hash = new FSHA256Hash(manifest.FileManifestList[i].sha256Hash);
+      } else {
+        fileList.sha256Hash = null;
+      }
+
       fileList.ChunkParts = [];
       fileList.FileSize = 0;
       for (let j=0;j<manifest.FileManifestList[i].FileChunkParts.length;j++) {
@@ -51,15 +60,18 @@ export class FFileManifestList {
     if (dataVersion >= EFileManifestListVersion.Original) {
       let names = ar.readArray(elementCount, () => ar.readFString())
       if (lazy) {
-        for (let i = 0; i < elementCount; i++) // SymlinkTarget
+        for (let i = 0; i < elementCount; i++) {
+          // SymlinkTarget
           ar.skip(ar.readInt32())
+        }
 
         ar.skip(elementCount * FSHAHash.SIZE) // FileHash
         ar.skip(elementCount * 1) // FileMetaFlags
 
         for (let i = 0; i < elementCount; i++) {
           let count = ar.readUInt32();
-          for (let j = 0; j < count; j++) { // InstallTags
+          for (let j = 0; j < count; j++) {
+            // InstallTags
             ar.skip(ar.readInt32())
           }
         }
@@ -72,6 +84,26 @@ export class FFileManifestList {
       }
       let chunks = ar.readArray(elementCount, () => ar.readArray(() => new FChunkPart(ar)))
 
+      let md5s=[], mimes=[], sha256s=[];
+      if (!lazy) {
+        if (dataVersion >= EFileManifestListVersion.MimeMD5Hash) {
+          // Read MD5's if they exist
+          for (let i = 0; i < elementCount; i++) {
+            if (ar.readUInt32() === 0) {
+              md5s.push(null);
+            } else {
+              md5s.push(ar.read(16).toString());
+            }
+          }
+          mimes = ar.readArray(elementCount, () => ar.readFString())
+        }
+
+        if (dataVersion >= EFileManifestListVersion.SHA256Hash) {
+          sha256s = ar.readArray(elementCount, () => new FSHA256Hash(ar))
+        }
+      }
+
+
       for (let i = 0; i < elementCount; i++) {
         this.FileList[i].Filename = names[i]
         this.FileList[i].SymlinkTarget = lazy ? null : links[i]
@@ -79,6 +111,9 @@ export class FFileManifestList {
         this.FileList[i].FileMetaFlags = lazy ? null : flags[i]
         this.FileList[i].InstallTags = lazy ? null : tags[i]
         this.FileList[i].ChunkParts = chunks[i]
+        this.FileList[i].md5Hash = lazy ? null : md5s[i];
+        this.FileList[i].mimeType = lazy ? null : mimes[i];
+        this.FileList[i].sha256Hash = lazy ? null : sha256s[i];
       }
     }
 

@@ -31,6 +31,8 @@ export class Manifest {
   PrereqName: string
   PrereqPath: string
   PrereqArgs: string
+  uninstallExe: string
+  uninstallCommand: string
   FileManifestList: FileManifest[]
   ChunkHashList: object
   ChunkShaList: object
@@ -111,6 +113,8 @@ export class Manifest {
       this.AppName = meta.AppName
       this.BuildVersion = meta.BuildVersion
       this.BuildId = meta.BuildId
+      this.uninstallExe = meta.UninstallExe
+      this.uninstallCommand = meta.UninstallCommand
       this.LaunchExe = meta.LaunchExe
       this.LaunchCommand = meta.LaunchCommand
       this.PrereqIds = meta.PrereqIds
@@ -148,6 +152,7 @@ export class Manifest {
       BuildId: this.BuildId, LaunchExeString: this.LaunchExe, LaunchCommand: this.LaunchCommand,
       PrereqIds: this.PrereqIds, PrereqName: this.PrereqName, PrereqPath: this.PrereqPath,
       PrereqArgs: this.PrereqArgs,
+      uninstallExe: this.uninstallExe, uninstallCommand: this.uninstallCommand,
       FileManifestList: this.FileManifestList,
       ChunkHashList: this.ChunkHashList, ChunkShaList: this.ChunkShaList,
       DataGroupList: this.DataGroupList, ChunkFilesizeList: this.ChunkFilesizeList,

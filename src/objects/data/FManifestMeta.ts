@@ -20,6 +20,9 @@ export class FManifestMeta {
   LaunchExe: string
   /* The command line required when launching the application executable. */
   LaunchCommand: string
+  /* Uninstall Information */
+  UninstallExe: string
+  UninstallCommand: string
   /* The set of prerequisite ids for dependencies that this build's prerequisite installer will apply. */
   PrereqIds: string[]
   /* A display string for the prerequisite provided at generation. */
@@ -52,6 +55,8 @@ export class FManifestMeta {
     this.bIsFileData = data.bIsFileData;
     this.AppName = data.AppNameString;
     this.BuildVersion = data.BuildVersionString;
+    this.UninstallExe = data.UninstallExeString;
+    this.UninstallCommand = data.UninstallCommand;
     this.LaunchExe = data.LaunchExeString;
     this.LaunchCommand = data.LaunchCommand;
     this.PrereqIds = data.PrereqIds;
@@ -100,6 +105,16 @@ export class FManifestMeta {
       /* Otherwise, initialise with backwards compatible default when loading. */
       this.BuildId = FBuildPatchUtils.GetBackwardsCompatibleBuildId(this)
     }
+
+    if (dataVersion >= EManifestMetaVersion.hasUninstallCommand) {
+        /* Un-serialise the UninstallExe and UninstallCommand. */
+        this.UninstallExe = ar.readFString()
+        this.UninstallCommand = ar.readFString()
+    } else {
+      this.UninstallExe = ""
+      this.UninstallCommand = ""
+    }
+
 
     /* We must always make sure to seek the archive to the correct end location. */
     ar.seek(startPos + dataSize);

@@ -48,7 +48,16 @@ export class FileManifestStream extends Readable {
       if (index > 0) {
         this._chunks[index-1].clearData();
       }
-      let data = await chunk.loadData();
+      let data, failed=false;
+      do {
+        try {
+          data = await chunk.loadData();
+          failed = false;
+        } catch (e) {
+          console.log(e)
+          failed = true;
+        }
+      } while (failed);
       let off = this.position - this._startPositions[index];
 
       let dataSize = chunk.Size - off;

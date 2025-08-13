@@ -15,6 +15,8 @@ import {join} from "path";
 import crypto from "crypto";
 import fs from "fs";
 
+const currentlyDownloading = {};
+
 export class FileChunkPart {
   Guid: string
   Offset: number
@@ -53,69 +55,98 @@ export class FileChunkPart {
     this.Data = null;
   }
 
-  async loadData(): Promise<Buffer> {
-    let {cacheDirectory: dir, lazy} = this.#options
-    let path = dir != null ? join(dir, this.Filename) : null
-
-    let data = Buffer.alloc(0)
-    if (path != null && fs.existsSync(path)) {
-      if (this.Data) {
-        data = this.Data;
+  async downloading() {
+      if (this.Data) { return Promise.resolve(); }
+      if (!currentlyDownloading[this.Url]) {
+          currentlyDownloading[this.Url] = [];
+          return Promise.resolve();
       } else {
-        data = fs.readFileSync(path)
-
-        if (!lazy) {
-          let hash = toHex(FRollingHash.GetHashForDataSet(data));
-          if (hash != this.Hash) {
-            throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch (${hash} != ${this.Hash})`);
-          }
-
-          // We have No SHA
-          if (this.Sha !== "00000000000000000000") {
-            let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
-            if (sha != this.Sha) {
-              throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch (${sha} != ${this.Sha})`);
-            }
-          }
-        }
-        this.Data = data;
+          return new Promise((res) => {
+              currentlyDownloading[this.Url].push(res);
+          });
       }
-    } else {
-      if (this.#options.chunkBaseUri == null) {
-        throw new Error("'<ManifestOptions>.chunkBaseUri' can not be empty for downloading chunks");
-      }
+  }
 
-      let url = this.#options.chunkBaseUri + (this.#options.chunkBaseUri.endsWith("/") ? "" : "/") + this.Url;
-      let res: Response;
+  doneDownloading() {
+      let promises = currentlyDownloading[this.Url];
+      if (!promises) { return; }
+      delete currentlyDownloading[this.Url];
+      if (promises.length === 0) { return; }
+
+      // console.log('Done downloading', this.Url, 'with', promises.length, 'waiting promises');
+      for (let i = 0; i < promises.length; i++) {
+           promises[i]();
+      }
+  }
+
+  async loadData(): Promise<Buffer> {
+      await this.downloading();
       try {
-        res = await request({uri: url});
-      } catch (e) {
-        throw new Error(`Failed to download '${this.Filename}': Request failed with error '${e}'`);
-      }
-      if (res.status != 200) {
-        throw new Error(`Failed to download '${this.Filename}': Request failed with status '${res.status}'`);
-      }
+          let {cacheDirectory: dir, lazy} = this.#options
+          let path = dir != null ? join(dir, this.Filename) : null;
 
-      let ar = new FArchive(res.content)
-      let magic = ar.readUInt32()
-      if (magic != FChunkHeader.MAGIC) {
-        throw new Error(`Chunk '${this.Filename}' is invalid: Header magic mismatch (0x${toHex(magic)} != 0x${toHex(FChunkHeader.MAGIC)})`);
+          let data = Buffer.alloc(0)
+          if (path != null && fs.existsSync(path)) {
+              if (this.Data) {
+                  data = this.Data;
+              } else {
+                  data = fs.readFileSync(path)
+
+                  if (!lazy) {
+                      let hash = toHex(FRollingHash.GetHashForDataSet(data));
+                      if (hash != this.Hash) {
+                          throw new Error(`Chunk '${this.Filename}' is corrupted: Hash mismatch (${hash} != ${this.Hash})`);
+                      }
+
+                      // We have No SHA
+                      if (this.Sha !== "00000000000000000000") {
+                          let sha = crypto.createHash("sha1").update(data).digest("hex").toUpperCase()
+                          if (sha != this.Sha) {
+                              throw new Error(`Chunk '${this.Filename}' is corrupted: Sha mismatch (${sha} != ${this.Sha})`);
+                          }
+                      }
+                  }
+                  this.Data = data;
+              }
+          } else {
+              if (this.#options.chunkBaseUri == null) {
+                  throw new Error("'<ManifestOptions>.chunkBaseUri' cannot be empty for downloading chunks");
+              }
+
+              let url = this.#options.chunkBaseUri + (this.#options.chunkBaseUri.endsWith("/") ? "" : "/") + this.Url;
+              let res: Response;
+              try {
+                  res = await request({uri: url});
+              } catch (e) {
+                  throw new Error(`Failed to download '${this.Filename}': Request failed with error '${e}'`);
+              }
+              if (res.status != 200) {
+                  throw new Error(`Failed to download '${this.Filename}': Request failed with status '${res.status}'`);
+              }
+
+              let ar = new FArchive(res.content);
+              let magic = ar.readUInt32();
+              if (magic != FChunkHeader.MAGIC) {
+                  throw new Error(`Chunk '${this.Filename}' is invalid: Header magic mismatch (0x${toHex(magic)} != 0x${toHex(FChunkHeader.MAGIC)})`);
+              }
+              ar.seek(0);
+
+              let header = new FChunkHeader(ar, lazy)
+              let [status, buf] = header.load(ar, lazy)
+              if (status != EChunkLoadResult.Success) {
+                  throw new Error(`Chunk '${this.Filename}' is invalid: Load result 'EChunkLoadResult::${EChunkLoadResult[status]}'`);
+              }
+
+              data = buf;
+              if (path != null) fs.writeFileSync(path, data);
+              this.Data = data;
+          }
+
+          let result = Buffer.alloc(this.Size)
+          data.copy(result, 0, this.Offset, this.Offset + this.Size)
+          return result
+      } finally {
+          this.doneDownloading();
       }
-      ar.seek(0)
-
-      let header = new FChunkHeader(ar, lazy)
-      let [ status, buf ] = header.load(ar, lazy)
-      if (status != EChunkLoadResult.Success) {
-        throw new Error(`Chunk '${this.Filename}' is invalid: Load result 'EChunkLoadResult::${EChunkLoadResult[status]}'`);
-      }
-
-      data = buf
-      if (path != null) fs.writeFileSync(path, data)
-      this.Data = data;
-    }
-
-    let result = Buffer.alloc(this.Size)
-    data.copy(result, 0, this.Offset, this.Offset + this.Size)
-    return result
   }
 }

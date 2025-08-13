@@ -1,4 +1,4 @@
-# Node Epic Manifest Marser
+# Node Epic Manifest Parser
 
 A Node.js library to read and parse EpicGame's / Unreal Engine's manifest
 
